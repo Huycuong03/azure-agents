@@ -1,8 +1,6 @@
 import datetime
 from zoneinfo import ZoneInfo
 
-from azure.ai.agents.models import McpTool
-
 from src.utils import agent_function_tool
 
 
@@ -16,6 +14,3 @@ def get_current_datetime() -> str:
     output = f"The current time in Vietnam (ICT) is: {current_time}"
 
     return output
-
-
-cosmosdb_mcp = McpTool(server_label="CosmosDB MCP", server_url="...")

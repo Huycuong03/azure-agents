@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from glob import glob
 from importlib.machinery import ModuleSpec
@@ -13,7 +14,7 @@ def agent_function_tool(func: Callable) -> Callable:
     return func
 
 
-def load_tools(tool_dir: str | None = "./tools") -> ToolSet:
+def load_tools(tool_dir: str | None = "./agent_config/tools") -> ToolSet:
     tool_set = ToolSet()
 
     if tool_dir is None:
@@ -22,17 +23,25 @@ def load_tools(tool_dir: str | None = "./tools") -> ToolSet:
     if not os.path.exists(tool_dir):
         raise ValueError(f"Given directory does not exist: {tool_dir}")
 
+    mcp_paths = [Path(p).resolve() for p in glob(tool_dir + "/*.json")]
     module_paths = [Path(p).resolve() for p in glob(tool_dir + "/*.py")]
+
+    func_tools: set[Callable] = set()
     for path in module_paths:
-        func_tools, mcp_tools = load_tool_from_path(path)
-        tool_set.add(func_tools)
+        funcs = load_tool_from_module_path(path)
+        func_tools = func_tools.union(funcs)
+
+    tool_set.add(FunctionTool(func_tools))
+
+    for path in mcp_paths:
+        mcp_tools = load_tool_from_mcp_path(path)
         for mcp_tool in mcp_tools:
             tool_set.add(mcp_tool)
 
     return tool_set
 
 
-def load_tool_from_path(path: Path) -> tuple[FunctionTool, list[McpTool]]:
+def load_tool_from_module_path(path: Path) -> set[Callable]:
     module_name = os.path.basename(path).split(".")[0]
     spec: ModuleSpec = cast(
         ModuleSpec, importlib.util.spec_from_file_location(module_name, path)
@@ -46,16 +55,31 @@ def load_tool_from_path(path: Path) -> tuple[FunctionTool, list[McpTool]]:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    funcs = []
-    mcp_tools: list[McpTool] = []
+    funcs = set()
     for attr_name in dir(module):
         attr = getattr(module, attr_name)
         if getattr(attr, "_is_agent_tool", False):
-            funcs.append(attr)
-        if isinstance(attr, McpTool):
-            mcp_tools.append(attr)
+            funcs.add(attr)
 
-    return FunctionTool(set(funcs)), mcp_tools
+    return funcs
+
+
+def load_tool_from_mcp_path(path: Path) -> list[McpTool]:
+    with open(path, "r") as file:
+        mcp_tool_configs: list[dict[str, str]] = json.load(file)
+
+    mcp_tools = []
+    for config in mcp_tool_configs:
+        try:
+            mcp_tool = McpTool(
+                server_label=config["server_label"],
+                server_url=config["server_url"],
+            )
+        except KeyError:
+            continue
+        mcp_tools.append(mcp_tool)
+
+    return mcp_tools
 
 
 def load_instructions(path: str) -> str:

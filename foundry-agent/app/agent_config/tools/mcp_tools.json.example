@@ -1,0 +1,6 @@
+[
+    {
+        "server_label": "CosmosDB MCP",
+        "server_url": "https://aic-lab-cosmos-mcp-a2b2fxcsd5e0eugf.southeastasia-01.azurewebsites.net/mcp"
+    }
+]
