@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+aiohttp
+python-dotenv
+azure-ai-agents>=>=1.2.0b3
+azure-identity
+microsoft-agents-hosting-fastapi
+microsoft-agents-authentication-msal
