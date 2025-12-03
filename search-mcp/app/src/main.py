@@ -16,12 +16,12 @@ SEARCH_ENDPOINT = os.getenv("SEARCH_ENDPOINT")
 SEARCH_KEY = os.getenv("SEARCH_KEY")
 
 clients: dict[str, SearchClient] = {}
-app = FastAPI()
+api = FastAPI()
 mcp = FastMCP()
 
 
 @mcp.tool()
-@app.get("/{index_name}/{document_id}")
+@api.get("/{index_name}/{document_id}")
 def find_document_by_id(index_name: str, document_id: str):
     """
     Find a document by its ID in the specified Azure Search index.
@@ -53,7 +53,7 @@ def find_document_by_id(index_name: str, document_id: str):
 
 
 @mcp.tool()
-@app.post("/{index_name}")
+@api.post("/{index_name}")
 def text_search(index_name: str, search_params: dict):
     """
     Perform a text search on the specified Azure Search index.
@@ -83,3 +83,7 @@ def text_search(index_name: str, search_params: dict):
         response = JSONResponse({"error": str(e)}, status_code=400)
 
     return response
+
+
+app = mcp.streamable_http_app()
+app.mount("/api", api)

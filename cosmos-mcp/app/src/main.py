@@ -18,12 +18,12 @@ COSMOS_ENDPOINT = os.getenv("COSMOS_ENDPOINT")
 COSMOS_KEY = os.getenv("COSMOS_KEY")
 
 client = CosmosClient(COSMOS_ENDPOINT, COSMOS_KEY)  # type: ignore
-app = FastAPI()
+api = FastAPI()
 mcp = FastMCP()
 
 
 @mcp.tool()
-@app.get("/")
+@api.get("/")
 def list_databases():
     """
     List all databases in the Cosmos DB account.
@@ -37,7 +37,7 @@ def list_databases():
 
 
 @mcp.tool()
-@app.get("/{database_name}")
+@api.get("/{database_name}")
 def list_containers(database_name: str):
     """
     List all containers in a specified database.
@@ -57,7 +57,7 @@ def list_containers(database_name: str):
 
 
 @mcp.tool()
-@app.post("/{database_name}/{container_name}")
+@api.post("/{database_name}/{container_name}")
 def create_document(database_name: str, container_name: str, document: dict):
     """
     Create a new document in a specified container.
@@ -80,7 +80,7 @@ def create_document(database_name: str, container_name: str, document: dict):
 
 
 @mcp.tool()
-@app.get("/{database_name}/{container_name}")
+@api.get("/{database_name}/{container_name}")
 def get_all_documents(database_name: str, container_name: str):
     """
     Retrieve all documents from a specified container.
@@ -103,7 +103,7 @@ def get_all_documents(database_name: str, container_name: str):
 
 
 @mcp.tool()
-@app.get("/{database_name}/{container_name}/{document_id}")
+@api.get("/{database_name}/{container_name}/{document_id}")
 def find_document_by_id(database_name: str, container_name: str, document_id: str):
     """
     Find a document by its ID in a specified container.
@@ -127,7 +127,7 @@ def find_document_by_id(database_name: str, container_name: str, document_id: st
 
 
 @mcp.tool()
-@app.patch("/{database_name}/{container_name}/{document_id}")
+@api.patch("/{database_name}/{container_name}/{document_id}")
 def update_document(
     database_name: str, container_name: str, document_id: str, updates: dict
 ):
@@ -160,7 +160,7 @@ def update_document(
 
 
 @mcp.tool()
-@app.delete("/{database_name}/{container_name}/{document_id}")
+@api.delete("/{database_name}/{container_name}/{document_id}")
 def delete_document(database_name: str, container_name: str, document_id: str):
     """
     Delete a document from a specified container.
@@ -182,4 +182,5 @@ def delete_document(database_name: str, container_name: str, document_id: str):
     return response
 
 
-app.mount("/mcp", mcp.streamable_http_app())
+app = mcp.streamable_http_app()
+app.mount("/api", api)
