@@ -1,4 +1,5 @@
 **/__pycache__/
 **/.env
 **/mcp_tools.json
+/devTools
 teams-app-package/manifest.json

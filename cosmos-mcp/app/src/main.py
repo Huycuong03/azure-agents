@@ -1,17 +1,11 @@
-import logging
 import os
 
-from azure.cosmos.cosmos_client import CosmosClient
+from azure.cosmos.aio import CosmosClient
 from azure.cosmos.exceptions import CosmosHttpResponseError, CosmosResourceNotFoundError
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, status
 from mcp.server.fastmcp import FastMCP
 from src.utils import clean_document
-
-logging.basicConfig(
-    format="%(levelname)s: %(message)s", handlers=[logging.StreamHandler()]
-)
 
 load_dotenv()
 COSMOS_ENDPOINT = os.getenv("COSMOS_ENDPOINT")
@@ -24,21 +18,20 @@ mcp = FastMCP()
 
 @mcp.tool()
 @api.get("/")
-def list_databases():
+async def list_databases():
     """
     List all databases in the Cosmos DB account.
 
     Returns:
         list: A list of database names.
     """
-    databases = [db["id"] for db in client.list_databases()]
-    response = JSONResponse(content={"databases": databases})
-    return response
+    databases = [db["id"] async for db in client.list_databases()]
+    return {"databases": databases}
 
 
 @mcp.tool()
 @api.get("/{database_name}")
-def list_containers(database_name: str):
+async def list_containers(database_name: str):
     """
     List all containers in a specified database.
 
@@ -47,18 +40,19 @@ def list_containers(database_name: str):
     Returns:
         list: A list of container names.
     """
-    database = client.get_database_client(database_name)
     try:
-        containers = [container["id"] for container in database.list_containers()]
-        response = JSONResponse({"containers": containers})
-    except (CosmosResourceNotFoundError, CosmosHttpResponseError) as e:
-        response = JSONResponse({"error": str(e)}, status_code=404)
-    return response
+        database = client.get_database_client(database_name)
+        containers = [container["id"] async for container in database.list_containers()]
+        return {"database": database_name, "containers": containers}
+    except CosmosResourceNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except CosmosHttpResponseError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @mcp.tool()
-@api.post("/{database_name}/{container_name}")
-def create_document(database_name: str, container_name: str, document: dict):
+@api.post("/{database_name}/{container_name}", status_code=status.HTTP_204_NO_CONTENT)
+async def create_document(database_name: str, container_name: str, document: dict):
     """
     Create a new document in a specified container.
 
@@ -69,19 +63,19 @@ def create_document(database_name: str, container_name: str, document: dict):
     Returns:
         status: Status message indicating success or failure.
     """
-    database = client.get_database_client(database_name)
-    container = database.get_container_client(container_name)
     try:
-        container.create_item(document)
-        response = JSONResponse({"status": "Document created successfully"})
-    except (CosmosResourceNotFoundError, CosmosHttpResponseError) as e:
-        response = JSONResponse({"status": str(e)}, status_code=400)
-    return response
+        database = client.get_database_client(database_name)
+        container = database.get_container_client(container_name)
+        await container.create_item(document)
+    except CosmosResourceNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except CosmosHttpResponseError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @mcp.tool()
 @api.get("/{database_name}/{container_name}")
-def get_all_documents(database_name: str, container_name: str):
+async def get_all_documents(database_name: str, container_name: str):
     """
     Retrieve all documents from a specified container.
 
@@ -91,20 +85,29 @@ def get_all_documents(database_name: str, container_name: str):
     Returns:
         list: A list of documents in the container.
     """
-    database = client.get_database_client(database_name)
-    container = database.get_container_client(container_name)
     try:
-        documents = list(container.read_all_items())
-        documents = [clean_document(doc) for doc in documents]
-        response = JSONResponse({"documents": documents})
-    except (CosmosResourceNotFoundError, CosmosHttpResponseError) as e:
-        response = JSONResponse({"status": str(e)}, status_code=400)
-    return response
+        database = client.get_database_client(database_name)
+        container = database.get_container_client(container_name)
+        documents = []
+        async for doc in container.read_all_items():
+            doc = clean_document(doc)
+            documents.append(doc)
+        return {
+            "database": database_name,
+            "container": container_name,
+            "documents": documents,
+        }
+    except CosmosResourceNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except CosmosHttpResponseError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @mcp.tool()
 @api.get("/{database_name}/{container_name}/{document_id}")
-def find_document_by_id(database_name: str, container_name: str, document_id: str):
+async def find_document_by_id(
+    database_name: str, container_name: str, document_id: str
+):
     """
     Find a document by its ID in a specified container.
 
@@ -115,20 +118,30 @@ def find_document_by_id(database_name: str, container_name: str, document_id: st
     Returns:
         dict: The document data if found, otherwise an error message.
     """
-    database = client.get_database_client(database_name)
-    container = database.get_container_client(container_name)
     try:
-        document = container.read_item(item=document_id, partition_key=document_id)
+        database = client.get_database_client(database_name)
+        container = database.get_container_client(container_name)
+        document = await container.read_item(
+            item=document_id, partition_key=document_id
+        )
         document = clean_document(document)
-        response = JSONResponse({"document": document})
-    except (CosmosResourceNotFoundError, CosmosHttpResponseError) as e:
-        response = JSONResponse({"error": str(e)}, status_code=404)
-    return response
+        return {
+            "database": database_name,
+            "container": container_name,
+            "document": document,
+        }
+    except CosmosResourceNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except CosmosHttpResponseError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @mcp.tool()
-@api.patch("/{database_name}/{container_name}/{document_id}")
-def update_document(
+@api.patch(
+    "/{database_name}/{container_name}/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def update_document(
     database_name: str, container_name: str, document_id: str, updates: dict
 ):
     """
@@ -142,10 +155,10 @@ def update_document(
     Returns:
         status: Status message indicating success or failure.
     """
-    database = client.get_database_client(database_name)
-    container = database.get_container_client(container_name)
     try:
-        container.patch_item(
+        database = client.get_database_client(database_name)
+        container = database.get_container_client(container_name)
+        await container.patch_item(
             item=document_id,
             partition_key=document_id,
             patch_operations=[
@@ -153,15 +166,18 @@ def update_document(
                 for key, value in updates.items()
             ],
         )
-        response = JSONResponse({"status": "Document updated successfully"})
-    except (CosmosResourceNotFoundError, CosmosHttpResponseError) as e:
-        response = JSONResponse({"status": str(e)}, status_code=400)
-    return response
+    except CosmosResourceNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except CosmosHttpResponseError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @mcp.tool()
-@api.delete("/{database_name}/{container_name}/{document_id}")
-def delete_document(database_name: str, container_name: str, document_id: str):
+@api.delete(
+    "/{database_name}/{container_name}/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_document(database_name: str, container_name: str, document_id: str):
     """
     Delete a document from a specified container.
 
@@ -172,14 +188,14 @@ def delete_document(database_name: str, container_name: str, document_id: str):
     Returns:
         status: Status message indicating success or failure.
     """
-    database = client.get_database_client(database_name)
-    container = database.get_container_client(container_name)
     try:
-        container.delete_item(item=document_id, partition_key=document_id)
-        response = JSONResponse({"status": "Document deleted successfully"})
-    except (CosmosResourceNotFoundError, CosmosHttpResponseError) as e:
-        response = JSONResponse({"status": str(e)}, status_code=400)
-    return response
+        database = client.get_database_client(database_name)
+        container = database.get_container_client(container_name)
+        await container.delete_item(item=document_id, partition_key=document_id)
+    except CosmosResourceNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except CosmosHttpResponseError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 app = mcp.streamable_http_app()

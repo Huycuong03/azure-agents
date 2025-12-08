@@ -1,4 +1,5 @@
-azure-cosmos
-mcp
 fastapi
+mcp
+aiohttp
 uvicorn
+azure-cosmos
